@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kural IDE</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600&family=Syne:wght@400;600;700&display=swap" rel="stylesheet" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <img src="assets/logo.svg" alt="Kural IDE" class="logo" />
+        <div class="brand-text">
+          <div class="brand-name">Kural IDE</div>
+          <div class="brand-tag">Ancient Wisdom. Modern Code.</div>
+        </div>
+      </div>
+      <div class="session-status">
+        <span id="project-name">No active project</span>
+        <span id="session-health">Health 100%</span>
+      </div>
+      <div class="top-actions">
+        <button id="new-project-btn">New Project</button>
+        <button id="save-session-btn">Save Session</button>
+        <button id="settings-btn">Settings</button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <section class="chat-zone">
+        <div class="chat-panel architect">
+          <div class="panel-header">
+            <div class="panel-title">
+              <span>Architect</span>
+              <span class="role">Kural Architect</span>
+            </div>
+            <div class="panel-meta">
+              <select id="architect-model" class="model-select">
+                <option value="gemini" selected>Gemini 2.0 Flash</option>
+                <option value="groq">Groq Llama</option>
+                <option value="claude">Claude Sonnet</option>
+                <option value="gpt4o">GPT-4o</option>
+              </select>
+              <span id="architect-status" class="status">Idle</span>
+              <span id="architect-count" class="count">0</span>
+            </div>
+          </div>
+          <div id="architect-chat" class="chat-feed"></div>
+          <div class="intervention">
+            <input id="architect-input" type="text" placeholder="Inject a correction..." />
+            <button id="architect-send">Send</button>
+          </div>
+        </div>
+
+        <div class="chat-panel builder">
+          <div class="panel-header">
+            <div class="panel-title">
+              <span>Builder</span>
+              <span class="role">Kural Builder</span>
+            </div>
+            <div class="panel-meta">
+              <select id="builder-model" class="model-select">
+                <option value="gemini" selected>Gemini 2.0 Flash</option>
+                <option value="groq">Groq Llama</option>
+                <option value="claude">Claude Sonnet</option>
+                <option value="gpt4o">GPT-4o</option>
+              </select>
+              <span id="builder-status" class="status">Idle</span>
+              <span id="builder-count" class="count">0</span>
+            </div>
+          </div>
+          <div id="builder-chat" class="chat-feed"></div>
+          <div class="intervention">
+            <input id="builder-input" type="text" placeholder="Inject a correction..." />
+            <button id="builder-send">Send</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="build-zone">
+        <aside class="task-panel">
+          <div class="panel-label">Task List</div>
+          <ul id="task-list"></ul>
+        </aside>
+        <div class="editor-panel">
+          <div class="panel-label">Monaco Editor</div>
+          <div id="editor"></div>
+        </div>
+        <div class="preview-panel">
+          <div class="panel-label">Live Preview</div>
+          <iframe id="preview" title="Live Preview"></iframe>
+        </div>
+      </section>
+    </main>
+
+    <footer class="control-bar">
+      <input id="idea-input" type="text" placeholder="Describe your project idea..." />
+      <button id="start-btn">Start</button>
+      <button id="pause-btn">Pause</button>
+      <button id="auto-btn"><span class="bolt">⚡</span> Automate</button>
+      <span id="mode-indicator" class="indicator">Manual Mode</span>
+    </footer>
+  </div>
+
+  <div id="plan-modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Edit & Approve Plan</h2>
+        <button id="close-modal">Close</button>
+      </div>
+      <textarea id="plan-editor"></textarea>
+      <div class="modal-actions">
+        <button id="add-task-btn">Add Task</button>
+        <button id="remove-task-btn">Remove Task</button>
+        <button id="feedback-btn">Get Architect Feedback</button>
+        <button id="approve-btn" class="primary">Approve & Send</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
