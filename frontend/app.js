@@ -1,7 +1,7 @@
 const state = {
   currentProject: "",
   architectModel: "gemini",
-  builderModel: "gemini",
+  builderModel: "openrouter",
   isAutoMode: false,
   isPaused: false,
   conversationHistory: [],
@@ -12,15 +12,21 @@ const state = {
 };
 
 const API_BASE = (() => {
-  if (window.location.port === "5000") {
-    return "";
+  const { protocol, hostname, host, origin, port } = window.location;
+
+  if (hostname === "localhost" || hostname === "127.0.0.1") {
+    return "http://localhost:5000";
   }
-  const host = window.location.host;
-  let apiHost = host.replace(/:\d+$/, ":5000");
+
+  if (port === "5000" || host.includes("-5000.")) {
+    return origin;
+  }
+
   if (host.includes("-3000.")) {
-    apiHost = host.replace("-3000.", "-5000.");
+    return origin.replace("-3000.", "-5000.");
   }
-  return `${window.location.protocol}//${apiHost}`;
+
+  return `${protocol}//${hostname}:5000`;
 })();
 
 const elements = {
@@ -38,12 +44,17 @@ const elements = {
   architectModel: document.getElementById("architect-model"),
   builderModel: document.getElementById("builder-model"),
   planModal: document.getElementById("plan-modal"),
+  decisionPanel: document.getElementById("decision-panel"),
   planEditor: document.getElementById("plan-editor"),
   approveBtn: document.getElementById("approve-btn"),
   closeModal: document.getElementById("close-modal"),
   addTaskBtn: document.getElementById("add-task-btn"),
   removeTaskBtn: document.getElementById("remove-task-btn"),
   feedbackBtn: document.getElementById("feedback-btn"),
+  finishBtn: document.getElementById("finish-btn"),
+  addFeatureBtn: document.getElementById("add-feature-btn"),
+  fixSomethingBtn: document.getElementById("fix-something-btn"),
+  continueBtn: document.getElementById("continue-btn"),
   toast: document.getElementById("toast"),
   architectStatus: document.getElementById("architect-status"),
   builderStatus: document.getElementById("builder-status"),
@@ -54,9 +65,48 @@ const elements = {
   modeIndicator: document.getElementById("mode-indicator"),
   newProjectBtn: document.getElementById("new-project-btn"),
   saveSessionBtn: document.getElementById("save-session-btn"),
+  flowStatus: document.getElementById("flow-status"),
+  flowIcon: document.getElementById("flow-icon"),
+  flowText: document.getElementById("flow-text"),
+  flowArrow: document.getElementById("flow-arrow"),
 };
 
 let editorInstance = null;
+
+const FLOW_STAGES = {
+  ready: { icon: "💡", text: "Ready", arrow: "" },
+  architect_thinking: { icon: "🧠", text: "Architect Thinking", arrow: "⬇" },
+  plan_ready: { icon: "📋", text: "Plan Ready", arrow: "►" },
+  awaiting_approval: { icon: "✋", text: "Awaiting Your Approval", arrow: "" },
+  plan_approved: { icon: "✅", text: "Approved! Sending to Builder", arrow: "►" },
+  builder_working: { icon: "⚙️", text: "Builder Writing Code", arrow: "⬇" },
+  builder_done: { icon: "✅", text: "Task Complete", arrow: "◄" },
+  architect_reviewing: { icon: "🔍", text: "Architect Reviewing", arrow: "◄" },
+  awaiting_user_decision: { icon: "🤔", text: "Waiting for your decision", arrow: "" },
+  all_done: { icon: "🎉", text: "Project Complete!", arrow: "" },
+  error: { icon: "⚠️", text: "Error — Check Messages", arrow: "" },
+};
+
+const MESSAGE_LABELS = {
+  architect: "🧠 ARCHITECT",
+  builder: "⚙️ BUILDER",
+  user: "👤 YOU",
+  system: "📡 SYSTEM",
+};
+
+function updateFlowStatus(stage, taskInfo = "") {
+  const selected = FLOW_STAGES[stage] || FLOW_STAGES.ready;
+  elements.flowIcon.textContent = selected.icon;
+  elements.flowText.textContent = taskInfo ? `${selected.text} — ${taskInfo}` : selected.text;
+  elements.flowArrow.textContent = selected.arrow;
+
+  const panel = elements.flowStatus;
+  panel.className = "flow-status";
+  if (stage.startsWith("architect")) panel.classList.add("architect-active");
+  if (stage.startsWith("builder")) panel.classList.add("builder-active");
+  if (stage === "plan_approved") panel.classList.add("sending");
+  if (stage === "architect_reviewing") panel.classList.add("reviewing");
+}
 
 function showToast(message, persistent = false) {
   elements.toast.textContent = message;
@@ -72,11 +122,27 @@ function setStatus(panel, status) {
 }
 
 function addMessage(container, content, type) {
+  const wrapper = document.createElement("div");
+  wrapper.className = `message-wrapper ${type}`;
+
+  const label = document.createElement("div");
+  label.className = "message-label";
+  label.textContent = MESSAGE_LABELS[type] || type.toUpperCase();
+
   const message = document.createElement("div");
   message.className = `message ${type}`;
   message.textContent = content;
-  container.appendChild(message);
+
+  wrapper.appendChild(label);
+  wrapper.appendChild(message);
+  container.appendChild(wrapper);
   container.scrollTop = container.scrollHeight;
+}
+
+function addSystemMessage(content) {
+  addMessage(elements.architectChat, content, "system");
+  addMessage(elements.builderChat, content, "system");
+  updateMessageCount();
 }
 
 function updateMessageCount() {
@@ -89,9 +155,9 @@ function updateMessageCount() {
 function updateTaskList(planText) {
   const tasks = planText
     .split("\n")
-    .filter((line) => line.trim().toLowerCase().startsWith("task"));
+    .filter((line) => /^\s*\**\s*task\s*\d+\s*:/i.test(line.trim()));
   state.taskList = tasks.map((task) => ({
-    title: task.replace(/^task\s*\d+:/i, "").trim(),
+    title: task.replace(/^\s*\**\s*task\s*\d+\s*:\**\s*/i, "").trim(),
     status: "pending",
   }));
   renderTaskList();
@@ -129,6 +195,14 @@ function addTaskLine() {
   const taskCount = lines.filter((line) => line.toLowerCase().startsWith("task")).length;
   lines.push(`Task ${taskCount + 1}: `);
   elements.planEditor.value = lines.join("\n");
+}
+
+function showProjectDecisionPanel() {
+  elements.decisionPanel.classList.remove("hidden");
+}
+
+function hideProjectDecisionPanel() {
+  elements.decisionPanel.classList.add("hidden");
 }
 
 function removeTaskLine() {
@@ -189,43 +263,128 @@ function extractCodeBlocks(text) {
   return blocks;
 }
 
+function selectBestCodeBlock(blocks) {
+  const htmlBlock = blocks.find((block) => (block.language || "").toLowerCase() === "html");
+  if (htmlBlock) {
+    return htmlBlock;
+  }
+
+  const javascriptBlock = blocks.find((block) => {
+    const language = (block.language || "").toLowerCase();
+    return language === "javascript" || language === "js";
+  });
+  if (javascriptBlock) {
+    return javascriptBlock;
+  }
+
+  const cssBlock = blocks.find((block) => (block.language || "").toLowerCase() === "css");
+  if (cssBlock) {
+    return cssBlock;
+  }
+
+  return blocks.reduce((largest, current) =>
+    (current.code || "").length > (largest.code || "").length ? current : largest
+  );
+}
+
+function composePreviewDocument(blocks) {
+  const htmlBlock = blocks.find((block) => (block.language || "").toLowerCase() === "html");
+  if (!htmlBlock) {
+    return null;
+  }
+
+  const css = blocks
+    .filter((block) => (block.language || "").toLowerCase() === "css")
+    .map((block) => block.code.trim())
+    .join("\n\n");
+
+  const js = blocks
+    .filter((block) => {
+      const language = (block.language || "").toLowerCase();
+      return language === "javascript" || language === "js";
+    })
+    .map((block) => block.code.trim())
+    .join("\n\n");
+
+  let html = htmlBlock.code.trim();
+
+  if (css) {
+    const styleTag = `<style>\n${css}\n</style>`;
+    html = html.includes("</head>")
+      ? html.replace("</head>", `${styleTag}\n</head>`)
+      : `${styleTag}\n${html}`;
+  }
+
+  if (js) {
+    const scriptTag = `<script>\n${js}\n</script>`;
+    html = html.includes("</body>")
+      ? html.replace("</body>", `${scriptTag}\n</body>`)
+      : `${html}\n${scriptTag}`;
+  }
+
+  return html;
+}
+
 async function callApi(path, payload) {
   try {
     const response = await fetch(`${API_BASE}${path}`, {
       method: "POST",
+      credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || "Request failed");
+      const rawBody = await response.text();
+      let message = `Request failed (${response.status})`;
+      try {
+        const parsed = JSON.parse(rawBody);
+        message = parsed.error || message;
+      } catch (_parseError) {
+        if (response.status === 401 || response.status === 403) {
+          message = "Codespaces auth required for backend port. Open the 5000 port URL in your browser and allow access.";
+        }
+      }
+      throw new Error(message);
     }
     return response.json();
   } catch (error) {
-    throw new Error(
-      `Failed to fetch backend at ${API_BASE || "current host"}. Is the server running?`
-    );
+    const message = error instanceof Error ? error.message : "Unknown request error";
+    throw new Error(`Backend request failed at ${API_BASE || "current host"}: ${message}`);
   }
 }
 
 async function callArchitect(message) {
-  setStatus("architect", "Thinking");
+  const safeMessage = (message || "").trim();
+  if (!safeMessage) {
+    throw new Error("Architect message is empty.");
+  }
+  setStatus("architect", "Thinking...");
   const data = await callApi("/api/architect", {
-    message,
+    message: safeMessage,
     history: state.conversationHistory,
   });
   state.conversationHistory = data.history;
+  const modelName = data.model_used || "gemini";
+  elements.architectStatus.textContent = data.fallback_used ? `Auto: ${modelName}` : modelName;
+  if (data.fallback_used) showToast(`Architect switched to ${modelName} automatically`);
   setStatus("architect", "Idle");
   return data.response;
 }
 
 async function callBuilder(message) {
-  setStatus("builder", "Thinking");
+  const safeMessage = (message || "").trim();
+  if (!safeMessage) {
+    throw new Error("Builder task instruction is empty.");
+  }
+  setStatus("builder", "Thinking...");
   const data = await callApi("/api/builder", {
-    message,
+    message: safeMessage,
     history: state.conversationHistory,
   });
   state.conversationHistory = data.history;
+  const modelName = data.model_used || "openrouter";
+  elements.builderStatus.textContent = data.fallback_used ? `Auto: ${modelName}` : modelName;
+  if (data.fallback_used) showToast(`Builder switched to ${modelName} automatically`);
   setStatus("builder", "Idle");
   return data;
 }
@@ -241,46 +400,82 @@ async function startProject(idea) {
   addMessage(elements.architectChat, idea, "user");
   updateMessageCount();
 
+  updateFlowStatus("architect_thinking");
   const plan = await callArchitect(idea);
+  updateFlowStatus("plan_ready");
   addMessage(elements.architectChat, plan, "architect");
   updateMessageCount();
   updateTaskList(plan);
   elements.planEditor.value = plan;
   toggleModal(true);
+  updateFlowStatus("awaiting_approval");
 }
 
 async function runTaskLoop(approvedPlan) {
   toggleModal(false);
-  if (!approvedPlan) {
-    return;
-  }
+  hideProjectDecisionPanel();
+  if (!approvedPlan) return;
+  updateFlowStatus("plan_approved");
   updateTaskList(approvedPlan);
   state.currentTaskIndex = 0;
-  for (let i = 0; i < state.taskList.length; i += 1) {
-    if (state.isPaused) {
-      break;
-    }
-    updateTaskStatus(i, "in-progress");
-    const taskInstruction = state.taskList[i].title;
-    const builderResponse = await callBuilder(taskInstruction);
-    addMessage(elements.builderChat, builderResponse.response, "builder");
-    updateMessageCount();
-    handleBuilderResponse(builderResponse);
-    updateTaskStatus(i, "completed");
 
-    if (!state.isAutoMode) {
-      const nextTask = await callArchitect(builderResponse.response);
-      addMessage(elements.architectChat, nextTask, "architect");
-      updateMessageCount();
-      elements.planEditor.value = nextTask;
-      toggleModal(true);
+  async function runNextTask(index) {
+    if (state.isPaused) return;
+    if (index >= state.taskList.length) {
+      updateFlowStatus("all_done");
+      showToast("🎉 Project complete!");
       return;
     }
 
-    const nextTask = await callArchitect(builderResponse.response);
-    addMessage(elements.architectChat, nextTask, "architect");
-    updateMessageCount();
+    updateTaskStatus(index, "in-progress");
+    const taskInstruction = (state.taskList[index].title || "").trim()
+      || `Implement task ${index + 1} from the approved plan.`;
+
+    try {
+      updateFlowStatus("builder_working", `Task ${index + 1} of ${state.taskList.length}`);
+      const builderResponse = await callBuilder(taskInstruction);
+      updateFlowStatus("builder_done", `Task ${index + 1} complete`);
+      addMessage(elements.builderChat, builderResponse.response, "builder");
+      updateMessageCount();
+      handleBuilderResponse(builderResponse);
+      updateTaskStatus(index, "completed");
+      state.currentTaskIndex = index + 1;
+
+      updateFlowStatus("architect_reviewing");
+      const architectReviewInput = (builderResponse.response || "").trim()
+        || `Task ${index + 1} completed. Review output and provide the next task.`;
+      const nextPlan = await callArchitect(architectReviewInput);
+      addMessage(elements.architectChat, nextPlan, "architect");
+      updateMessageCount();
+
+      if (nextPlan.includes("AWAITING USER DECISION")) {
+        updateFlowStatus("awaiting_user_decision");
+        showProjectDecisionPanel();
+        return;
+      }
+
+      if (state.currentTaskIndex >= state.taskList.length) {
+        elements.planEditor.value = nextPlan;
+        toggleModal(true);
+        updateFlowStatus("awaiting_approval");
+        return;
+      }
+
+      if (state.isAutoMode) {
+        elements.planEditor.value = nextPlan;
+        await runNextTask(index + 1);
+      } else {
+        elements.planEditor.value = nextPlan;
+        toggleModal(true);
+        updateFlowStatus("awaiting_approval");
+      }
+    } catch (error) {
+      updateFlowStatus("error");
+      showToast(error.message, true);
+    }
   }
+
+  await runNextTask(0);
 }
 
 function handleBuilderResponse(builderData) {
@@ -288,11 +483,23 @@ function handleBuilderResponse(builderData) {
     ? builderData.codeBlocks
     : extractCodeBlocks(builderData.response);
   if (!blocks.length) {
+    updateEditor("plaintext", builderData.response?.trim() || "No code output received.");
+    showToast("Builder returned no fenced code block; showing raw output in editor.");
     return;
   }
-  const selected = blocks[0];
+
+  const selected = selectBestCodeBlock(blocks);
   const language = detectLanguage(selected.code, selected.language);
   updateEditor(language, selected.code.trim());
+
+  const previewDoc = composePreviewDocument(blocks);
+  if (previewDoc) {
+    updatePreview(previewDoc);
+  }
+
+  if (blocks.length > 1) {
+    showToast(`Applied ${blocks.length} code blocks. Editor showing ${language}.`);
+  }
 }
 
 function toggleAutoMode() {
@@ -310,6 +517,11 @@ async function handleUserIntervention(panel, message) {
     history: state.conversationHistory,
   });
   state.conversationHistory = data.history;
+  if (data.model_used) {
+    const modelLabel = document.querySelector(`#${panel}-model option[value="${data.model_used}"]`);
+    const modelName = modelLabel ? modelLabel.textContent : data.model_used;
+    setStatus(panel, data.fallback_used ? `⚡ ${modelName} (auto)` : `✅ ${modelName}`);
+  }
   const target = panel === "architect" ? elements.architectChat : elements.builderChat;
   addMessage(target, data.response, panel);
   updateMessageCount();
@@ -346,6 +558,7 @@ elements.startBtn.addEventListener("click", async () => {
   try {
     await startProject(idea);
   } catch (error) {
+    updateFlowStatus("error");
     showToast(error.message, true);
   }
 });
@@ -367,6 +580,7 @@ elements.approveBtn.addEventListener("click", async () => {
   try {
     await runTaskLoop(approvedPlan);
   } catch (error) {
+    updateFlowStatus("error");
     showToast(error.message, true);
   }
 });
@@ -379,10 +593,18 @@ elements.removeTaskBtn.addEventListener("click", removeTaskLine);
 
 elements.feedbackBtn.addEventListener("click", async () => {
   try {
-    const response = await callArchitect(elements.planEditor.value.trim());
+    const currentPlan = elements.planEditor.value.trim();
+    if (!currentPlan) {
+      showToast("Plan editor is empty.", true);
+      return;
+    }
+    updateFlowStatus("architect_thinking");
+    const response = await callArchitect(currentPlan);
+    updateFlowStatus("plan_ready");
     elements.planEditor.value = response;
     showToast("Architect feedback added.");
   } catch (error) {
+    updateFlowStatus("error");
     showToast(error.message, true);
   }
 });
@@ -423,7 +645,54 @@ elements.newProjectBtn?.addEventListener("click", () => {
   elements.builderChat.innerHTML = "";
   elements.taskList.innerHTML = "";
   elements.projectName.textContent = "No active project";
+  hideProjectDecisionPanel();
+  elements.ideaInput.placeholder = "Describe your project idea...";
+  updateFlowStatus("ready");
   showToast("Session cleared.");
+});
+
+elements.finishBtn?.addEventListener("click", () => {
+  hideProjectDecisionPanel();
+  updateFlowStatus("all_done");
+  showToast("🎉 Project marked complete!");
+  addMessage(elements.architectChat, "Project complete. Well done!", "architect");
+  updateMessageCount();
+});
+
+elements.addFeatureBtn?.addEventListener("click", () => {
+  hideProjectDecisionPanel();
+  elements.ideaInput.value = "";
+  elements.ideaInput.placeholder = "Describe the new feature...";
+  elements.ideaInput.focus();
+  updateFlowStatus("ready", "Describe your next feature");
+  showToast("Describe your new feature below");
+});
+
+elements.fixSomethingBtn?.addEventListener("click", () => {
+  hideProjectDecisionPanel();
+  elements.ideaInput.value = "";
+  elements.ideaInput.placeholder = "What needs fixing or improving?";
+  elements.ideaInput.focus();
+  updateFlowStatus("ready", "Describe what to fix");
+  showToast("Describe what to fix below");
+});
+
+elements.continueBtn?.addEventListener("click", async () => {
+  hideProjectDecisionPanel();
+  try {
+    updateFlowStatus("architect_thinking");
+    const nextPlan = await callArchitect(
+      "Continue building the project. What should we add next?"
+    );
+    addMessage(elements.architectChat, nextPlan, "architect");
+    updateMessageCount();
+    elements.planEditor.value = nextPlan;
+    toggleModal(true);
+    updateFlowStatus("awaiting_approval");
+  } catch (error) {
+    updateFlowStatus("error");
+    showToast(error.message, true);
+  }
 });
 
 elements.saveSessionBtn?.addEventListener("click", () => {
@@ -432,3 +701,4 @@ elements.saveSessionBtn?.addEventListener("click", () => {
 });
 
 calculateSessionHealth();
+updateFlowStatus("ready", "Enter your project idea below");

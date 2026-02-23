@@ -104,8 +104,60 @@ body {
 
 .chat-zone {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: 1fr 60px 1fr;
   gap: 16px;
+}
+
+.flow-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 60px;
+  background: var(--surface-2);
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  border-radius: 12px;
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+  padding: 8px 4px;
+  gap: 8px;
+  position: relative;
+}
+
+.flow-icon {
+  font-size: 20px;
+}
+
+.flow-text {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  font-size: 10px;
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+}
+
+.flow-arrow {
+  font-size: 16px;
+  color: var(--gold);
+  animation: pulse 1s infinite;
+}
+
+.flow-status.architect-active .flow-icon {
+  color: var(--gold);
+}
+
+.flow-status.builder-active .flow-icon {
+  color: var(--teal);
+}
+
+.flow-status.sending {
+  background: rgba(240, 192, 64, 0.1);
+}
+
+.flow-status.reviewing {
+  background: rgba(0, 212, 170, 0.1);
 }
 
 .chat-panel {
@@ -188,6 +240,32 @@ body {
   font-size: 12px;
 }
 
+.message-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.message-label {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+}
+
+.message-wrapper.architect .message-label {
+  color: var(--gold);
+}
+
+.message-wrapper.builder .message-label {
+  color: var(--teal);
+}
+
+.message-wrapper.user .message-label {
+  color: var(--orange);
+}
+
 .message {
   padding: 10px 12px;
   border-radius: 10px;
@@ -208,6 +286,12 @@ body {
 .message.user {
   background: rgba(255, 107, 53, 0.16);
   border-color: rgba(255, 107, 53, 0.5);
+}
+
+.message.system {
+  background: rgba(226, 226, 240, 0.06);
+  border-color: rgba(139, 139, 156, 0.5);
+  color: var(--muted);
 }
 
 .intervention {
@@ -458,6 +542,27 @@ body {
   color: #2a1a00;
 }
 
+.decision-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.decision-actions button {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.decision-actions .primary {
+  background: var(--gold);
+  color: #2a1a00;
+}
+
 .toast {
   position: fixed;
   bottom: 90px;
@@ -497,6 +602,19 @@ body {
   .chat-zone,
   .build-zone {
     grid-template-columns: 1fr;
+  }
+
+  .flow-status {
+    width: 100%;
+    min-height: 52px;
+    flex-direction: row;
+    justify-content: space-between;
+    padding: 10px 12px;
+  }
+
+  .flow-text {
+    writing-mode: horizontal-tb;
+    font-size: 11px;
   }
 
   .topbar {

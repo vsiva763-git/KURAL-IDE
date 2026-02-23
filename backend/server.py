@@ -5,8 +5,7 @@ from flask import Flask, jsonify, request, send_from_directory, abort
 from flask_cors import CORS
 from dotenv import load_dotenv
 
-from agents.architect import get_architect_response
-from agents.builder import get_builder_response
+from router import call_with_fallback
 from utils.extract import extract_code_blocks
 from utils.history import (
     add_message,
@@ -20,11 +19,29 @@ FRONTEND_DIR = os.path.join(ROOT_DIR, "frontend")
 load_dotenv(os.path.join(ROOT_DIR, ".env"))
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, supports_credentials=True)
+
+
+def _default_model() -> str:
+    return "gemini"
+
+
+def _default_builder_model() -> str:
+    openrouter_key = os.getenv("OPENROUTER_API_KEY", "").strip()
+    mistral_key = os.getenv("MISTRAL_API_KEY", "").strip()
+    gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
+    if openrouter_key and openrouter_key != "your_openrouter_key_here":
+        return "openrouter"
+    if mistral_key and mistral_key != "your_mistral_key_here":
+        return "mistral"
+    if gemini_key and gemini_key != "your_gemini_key":
+        return "gemini"
+    return "groq"
+
 
 ACTIVE_MODELS = {
-    "architect": "gemini",
-    "builder": "gemini",
+    "architect": _default_model(),
+    "builder": _default_builder_model(),
 }
 
 
@@ -59,10 +76,23 @@ def api_architect():
     message = payload.get("message", "")
     if not message:
         return _error("message is required")
-    response_text = get_architect_response(ACTIVE_MODELS["architect"], get_history(), message)
+    result = call_with_fallback(
+        "architect",
+        get_history(),
+        message,
+        preferred_model=ACTIVE_MODELS["architect"],
+    )
+    response_text = result["response"]
     add_message("user", message, "project_idea")
     add_message("architect", response_text, "plan")
-    return jsonify({"response": response_text, "history": get_history()})
+    return jsonify(
+        {
+            "response": response_text,
+            "model_used": result["model_used"],
+            "fallback_used": result["fallback_used"],
+            "history": get_history(),
+        }
+    )
 
 
 @app.post("/api/builder")
@@ -72,12 +102,20 @@ def api_builder():
     message = payload.get("message", "")
     if not message:
         return _error("message is required")
-    response_text = get_builder_response(ACTIVE_MODELS["builder"], get_history(), message)
+    result = call_with_fallback(
+        "builder",
+        get_history(),
+        message,
+        preferred_model=ACTIVE_MODELS["builder"],
+    )
+    response_text = result["response"]
     add_message("user", message, "task")
     add_message("builder", response_text, "code")
     return jsonify(
         {
             "response": response_text,
+            "model_used": result["model_used"],
+            "fallback_used": result["fallback_used"],
             "codeBlocks": extract_code_blocks(response_text),
             "history": get_history(),
         }
@@ -120,13 +158,28 @@ def api_user_intervention():
         return _error("message is required")
     correction = f"USER CORRECTION ({target.upper()}): {message}"
     add_message("user", correction, "correction")
+    try:
+        result = call_with_fallback(
+            target,
+            get_history(),
+            correction,
+            preferred_model=ACTIVE_MODELS[target],
+        )
+    except Exception as exc:
+        return _error(str(exc), 502)
+    response_text = result["response"]
     if target == "architect":
-        response_text = get_architect_response(ACTIVE_MODELS["architect"], get_history(), "")
         add_message("architect", response_text, "correction")
     else:
-        response_text = get_builder_response(ACTIVE_MODELS["builder"], get_history(), "")
         add_message("builder", response_text, "correction")
-    return jsonify({"response": response_text, "history": get_history()})
+    return jsonify(
+        {
+            "response": response_text,
+            "model_used": result["model_used"],
+            "fallback_used": result["fallback_used"],
+            "history": get_history(),
+        }
+    )
 
 
 if __name__ == "__main__":

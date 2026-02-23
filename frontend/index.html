@@ -41,10 +41,17 @@
             </div>
             <div class="panel-meta">
               <select id="architect-model" class="model-select">
-                <option value="gemini" selected>Gemini 2.0 Flash</option>
-                <option value="groq">Groq Llama</option>
-                <option value="claude">Claude Sonnet</option>
-                <option value="gpt4o">GPT-4o</option>
+                <optgroup label="Free — Recommended">
+                  <option value="gemini" selected>Gemini 2.0 Flash</option>
+                  <option value="mistral">Mistral Large</option>
+                </optgroup>
+                <optgroup label="Free — Limited Daily">
+                  <option value="groq">Groq Llama 3.3</option>
+                </optgroup>
+                <optgroup label="Paid">
+                  <option value="claude">Claude Sonnet</option>
+                  <option value="gpt4o">GPT-4o</option>
+                </optgroup>
               </select>
               <span id="architect-status" class="status">Idle</span>
               <span id="architect-count" class="count">0</span>
@@ -57,6 +64,12 @@
           </div>
         </div>
 
+        <div class="flow-status" id="flow-status">
+          <div class="flow-icon" id="flow-icon">🧠</div>
+          <div class="flow-text" id="flow-text">Ready — Enter your project idea below</div>
+          <div class="flow-arrow" id="flow-arrow"></div>
+        </div>
+
         <div class="chat-panel builder">
           <div class="panel-header">
             <div class="panel-title">
@@ -65,10 +78,18 @@
             </div>
             <div class="panel-meta">
               <select id="builder-model" class="model-select">
-                <option value="gemini" selected>Gemini 2.0 Flash</option>
-                <option value="groq">Groq Llama</option>
-                <option value="claude">Claude Sonnet</option>
-                <option value="gpt4o">GPT-4o</option>
+                <optgroup label="Free — Recommended">
+                  <option value="openrouter" selected>DeepSeek Coder</option>
+                  <option value="mistral">Mistral Codestral</option>
+                  <option value="gemini">Gemini 2.0 Flash</option>
+                </optgroup>
+                <optgroup label="Free — Limited Daily">
+                  <option value="groq">Groq Llama 3.3</option>
+                </optgroup>
+                <optgroup label="Paid">
+                  <option value="claude">Claude Sonnet</option>
+                  <option value="gpt4o">GPT-4o</option>
+                </optgroup>
               </select>
               <span id="builder-status" class="status">Idle</span>
               <span id="builder-count" class="count">0</span>
@@ -119,6 +140,21 @@
         <button id="remove-task-btn">Remove Task</button>
         <button id="feedback-btn">Get Architect Feedback</button>
         <button id="approve-btn" class="primary">Approve & Send</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="decision-panel" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>🎉 Project Status</h2>
+      </div>
+      <p>The Architect believes all tasks are complete. What would you like to do?</p>
+      <div class="decision-actions">
+        <button id="finish-btn" class="primary">✅ Project Complete — I am satisfied</button>
+        <button id="add-feature-btn">➕ Add a new feature</button>
+        <button id="fix-something-btn">🔧 Fix or improve something</button>
+        <button id="continue-btn">▶️ Continue building</button>
       </div>
     </div>
   </div>
