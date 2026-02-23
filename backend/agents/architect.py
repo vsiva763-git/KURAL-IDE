@@ -62,7 +62,7 @@ _GROQ_MODEL = "llama-3.3-70b-versatile"
 _CLAUDE_MODEL = "claude-3-5-sonnet-20240620"
 _MISTRAL_MODEL = "mistral-large-latest"
 _OPENROUTER_MODEL = "deepseek/deepseek-chat-v3-0324:free"
-_REQUEST_TIMEOUT_SECONDS = int(os.getenv("MODEL_HTTP_TIMEOUT", "20"))
+_REQUEST_TIMEOUT_SECONDS = int(os.getenv("MODEL_HTTP_TIMEOUT", "120"))
 
 
 genai.configure(api_key=os.getenv("GEMINI_API_KEY", ""))

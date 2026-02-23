@@ -11,6 +11,8 @@ ARCHITECT_FALLBACK_CHAIN = [
 BUILDER_FALLBACK_CHAIN = [
     "openrouter",
     "mistral",
+    "gemini",
+    "groq",
 ]
 
 FALLBACK_ERRORS = [

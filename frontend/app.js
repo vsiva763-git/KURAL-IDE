@@ -422,8 +422,8 @@ async function runTaskLoop(approvedPlan) {
   async function runNextTask(index) {
     if (state.isPaused) return;
     if (index >= state.taskList.length) {
-      updateFlowStatus("all_done");
-      showToast("🎉 Project complete!");
+      updateFlowStatus("awaiting_user_decision");
+      showProjectDecisionPanel();
       return;
     }
 
